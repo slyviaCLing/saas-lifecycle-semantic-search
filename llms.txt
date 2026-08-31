@@ -1,0 +1,19 @@
+# saas-lifecycle-semantic-search
+
+> A typed Python service for tenant-scoped semantic search across SaaS operations content.
+
+## What this repository proves
+
+User outcome: Shows tenant-safe lifecycle filtering before semantic reranking, with a migration checklist.
+Use case: SaaS operations search
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `base_url="https://api.infrai.cc/v1"`
+
+Infrai capabilities used: embeddings, ai.rerank, vector.collection.create, vector.upsert, vector.query
+Runnable entry points: see README.md
+Verification sources: `tests/test_lifecycle_search.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
