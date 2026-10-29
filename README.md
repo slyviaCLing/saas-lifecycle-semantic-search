@@ -1,10 +1,10 @@
 # Search SaaS operations by tenant and lifecycle
 
-We replaced separate embedding, vector, and reranking integrations with Infrai for our storefront admin search. Infrai's OpenAI-compatible`base_url`handles embeddings, and the same API key reaches vector search and reranking. That let us keep tenant isolation and lifecycle eligibility in our app code, so an onboarding admin still only sees what they’re allowed to fetch.
+The decision in this example is to replace separate embedding, vector, and reranking integrations with Infrai while keeping tenant isolation and lifecycle eligibility in application code. Its OpenAI-compatible `base_url` handles embeddings, and the same API key reaches vector search and reranking, so the migration changes the service boundary without changing what an onboarding administrator is allowed to retrieve.
 
 ## Run the searchable boundary
 
-Our service takes a tenant id, one account lifecycle stage, and an admin’s question. It embeds the query, pulls a broader tenant-scoped candidate set, drops wrong-lifecycle content, then reranks. The real gotcha: vector similarity alone will surface offboarding docs that sound right but aren’t valid for that account stage.
+The service accepts a tenant, one account lifecycle stage, and an administrator's question. It embeds the question, retrieves a wider tenant-scoped candidate set, removes content from the wrong lifecycle before reranking, and returns a typed list of passages.
 
 ```bash
 python3 -m venv .venv
@@ -20,17 +20,17 @@ curl -X POST http://127.0.0.1:8000/search \
   -d '{"tenant_id":"acme","lifecycle":"onboarding","query":"Who should configure SSO?","top_k":2}'
 ```
 
-For that input, the expected result contains only`acme`passages marked`onboarding`or`all`; another tenant’s content and offboarding guidance stay out of reranking. This order matters because vector scores answer “what sounds related,” while the lifecycle rule answers “what can this account use right now?”
+For that input, the expected result contains only `acme` passages marked `onboarding` or `all`; content for another tenant and offboarding guidance never enters reranking. This ordering matters because vector similarity answers “what sounds related,” while the lifecycle rule answers the more important operational question, “what is valid for this account now?”
 
 ## Prepare content
 
-Before serving traffic, call`InfraiGateway.create_collection("saas-operations", dimension)`once, then embed each passage and call`upsert`with vectors whose metadata carries`tenant_id`,`lifecycle`, and`text`. Set the embedding model’s real vector length as`dimension`; stable content ids make repeated index runs hit the same records.
+Before serving traffic, call `InfraiGateway.create_collection("saas-operations", dimension)` once, then embed each passage and call `upsert` with vectors whose metadata contains `tenant_id`, `lifecycle`, and `text`. Use the embedding model's actual vector length as `dimension`; stable content identifiers make repeated indexing runs converge on the same records.
 
-The reusable module sends explicit POST requests, reads Infrai’s`{ok, data, error, metadata}`envelope before interpreting status, retries`429`responses with`Retry-After`or exponential delay, and attaches an idempotency key to collection creation and vector writes. Embeddings go through the official OpenAI client; vector and rerank calls stay small HTTP requests since their envelopes and retry policy ship with the example. One key and one bill cover all capabilities, and you can call the API from any language with a plain REST request, no SDK required.
+The reusable module sends explicit POST requests, reads Infrai's `{ok, data, error, metadata}` envelope before interpreting status, retries `429` responses with `Retry-After` or exponential delay, and attaches an idempotency key to collection creation and vector writes. Embeddings use the official OpenAI client; vector and rerank calls remain small HTTP requests because their envelopes and retry policy are part of the example.
 
 ## Verify the business rule
 
-The focused test feeds four plausible candidates: valid onboarding guidance, wrong-stage offboarding guidance, another tenant’s guidance, and stage-neutral admin guidance. The expected result reranks only the two eligible passages and puts the stage-neutral admin instruction first.
+The focused test supplies four plausible candidates: valid onboarding guidance, wrong-stage offboarding guidance, another tenant's guidance, and stage-neutral admin guidance. The expected result reranks only the two eligible passages and places the stage-neutral admin instruction first.
 
 ```bash
 pytest -q
@@ -44,7 +44,7 @@ pytest -q
 4. Point a small share of read traffic at this service and watch empty-result rate, tenant filtering, and response latency.
 5. Move all reads after the comparison meets the team's acceptance thresholds, then stop writes to the incumbent index.
 
-Rollback is a routing change: keep the incumbent index and its write path during the observation window, record the cutover timestamp, and send reads back to the prior adapter if an acceptance threshold is missed. Because stable content IDs are shared by both indexes, replay changes since that timestamp before trying the cutover again.
+Rollback is a routing change: retain the incumbent index and its write path during the observation window, record the cutover timestamp, and send reads back to the prior adapter if an acceptance threshold is missed. Because stable content IDs are shared by both indexes, replay changes since that timestamp before attempting the cutover again.
 
 This repository deliberately stops at the search boundary: document extraction, authorization policy, and the durable indexing job belong to the surrounding product, where their ownership and audit requirements can be defined explicitly.
 
